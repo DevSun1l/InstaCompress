@@ -3,13 +3,14 @@ from tkinter import filedialog, messagebox
 import os
 from compressor import process_pdf, process_image
 
-def process_files(target_size_kb, file_paths):
+# Global state for files
+selected_files_list = []
+
+def process_files(target_size_kb, file_paths, output_folder):
     """
     Processes selected PDF and Image files using compressor backend.
-    Calculates size reduction and writes output to Desktop/Compressed_Files.
+    Calculates size reduction and writes output to the specified folder.
     """
-    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    output_folder = os.path.join(desktop, "Compressed_Files")
     os.makedirs(output_folder, exist_ok=True)
 
     print(f"\n--- Starting Compression Pipeline ---")
@@ -18,6 +19,7 @@ def process_files(target_size_kb, file_paths):
     print(f"Total Files Selected: {len(file_paths)}")
     print("-------------------------------------")
 
+    successful_count = 0
     for path in file_paths:
         if not os.path.exists(path):
             print(f"File not found: {path}")
@@ -42,13 +44,48 @@ def process_files(target_size_kb, file_paths):
             print(f"  - Original Size: {orig_size / 1024:.2f} KB")
             print(f"  - Compressed Size: {compressed_size / 1024:.2f} KB")
             print(f"  - Reduction: {reduction:.1f}%")
+            successful_count += 1
         except Exception as e:
             print(f"Failed to process {os.path.basename(path)}: {e}")
             
     print("--- Compression Pipeline Finished ---\n")
+    return successful_count
 
-def on_select_and_compress(target_entry):
-    # Retrieve target size
+def add_documents(listbox, files_label):
+    global selected_files_list
+    filetypes = [
+        ("All Supported Files", "*.pdf;*.jpg;*.jpeg;*.png"),
+        ("PDF Files (*.pdf)", "*.pdf"),
+        ("Image Files (*.jpg;*.jpeg;*.png)", "*.jpg;*.jpeg;*.png")
+    ]
+    files = filedialog.askopenfilenames(
+        title="Select PDF or Image Files",
+        filetypes=filetypes
+    )
+    if files:
+        for f in files:
+            if f not in selected_files_list:
+                selected_files_list.append(f)
+                listbox.insert(tk.END, os.path.basename(f))
+        files_label.config(text=f"Files added: {len(selected_files_list)}")
+
+def browse_output_folder(output_entry):
+    folder = filedialog.askdirectory(title="Select Output Save Location")
+    if folder:
+        output_entry.delete(0, tk.END)
+        output_entry.insert(0, folder)
+
+def start_compression(target_entry, output_entry, listbox, files_label):
+    global selected_files_list
+    if not selected_files_list:
+        messagebox.showwarning("No Files", "Please add one or more files to compress first.")
+        return
+
+    output_dir = output_entry.get().strip()
+    if not output_dir:
+        messagebox.showwarning("No Output Path", "Please select a valid output save location.")
+        return
+
     target_size_raw = target_entry.get().strip()
     try:
         target_size_kb = int(target_size_raw)
@@ -58,34 +95,24 @@ def on_select_and_compress(target_entry):
         messagebox.showerror("Invalid Input", "Please enter a valid positive integer for Target File Size (KB).")
         return
 
-    # Restrict file types to PDF, JPG, JPEG, and PNG
-    filetypes = [
-        ("All Supported Files", "*.pdf;*.jpg;*.jpeg;*.png"),
-        ("PDF Files (*.pdf)", "*.pdf"),
-        ("Image Files (*.jpg;*.jpeg;*.png)", "*.jpg;*.jpeg;*.png")
-    ]
-
-    selected_files = filedialog.askopenfilenames(
-        title="Select PDF or Image Files",
-        filetypes=filetypes
-    )
-
-    if not selected_files:
-        return
-
-    # Trigger the processing/routing pipeline
-    process_files(target_size_kb, selected_files)
+    # Trigger processing
+    success_count = process_files(target_size_kb, selected_files_list, output_dir)
     
-    # Inform user via dialog
-    messagebox.showinfo("Success", f"Dispatched {len(selected_files)} files for processing.\nCheck console for routing output.")
+    # Notify user
+    messagebox.showinfo("Finished", f"Successfully compressed {success_count} of {len(selected_files_list)} files.\nCheck console for details.")
+    
+    # Clear selections after processing
+    selected_files_list.clear()
+    listbox.delete(0, tk.END)
+    files_label.config(text="Files added: 0")
 
 def main():
     root = tk.Tk()
     root.title("Enterprise File Compressor")
     
-    # Configure centered window (400x250)
-    window_width = 400
-    window_height = 250
+    # Configure centered window (450x420 to fit all new layouts nicely)
+    window_width = 450
+    window_height = 420
     
     # Get screen dimensions
     screen_width = root.winfo_screenwidth()
@@ -101,6 +128,7 @@ def main():
     bg_color = "#f4f5f7"
     primary_color = "#1e293b" # Dark slate
     accent_color = "#2563eb" # Royal blue
+    success_color = "#10b981" # Emerald green for Start Compress
     text_color = "#0f172a"
     button_fg = "#ffffff"
     
@@ -114,21 +142,97 @@ def main():
         bg=bg_color, 
         fg=primary_color
     )
-    title_label.pack(pady=(20, 10))
+    title_label.pack(pady=(15, 5))
 
-    # Subtitle / Info
-    info_label = tk.Label(
-        root, 
-        text="Supported formats: PDF, JPG, JPEG, PNG", 
-        font=("Helvetica", 9, "italic"), 
+    # Add Documents Button & Count Label
+    files_frame = tk.Frame(root, bg=bg_color)
+    files_frame.pack(fill=tk.X, padx=25, pady=5)
+    
+    add_btn = tk.Button(
+        files_frame,
+        text="Add Documents",
+        font=("Helvetica", 10, "bold"),
+        bg="#475569", # Slate
+        fg=button_fg,
+        activebackground="#334155",
+        activeforeground=button_fg,
+        relief="flat",
+        cursor="hand2",
+        padx=10,
+        pady=5,
+        command=lambda: add_documents(files_listbox, files_count_label)
+    )
+    add_btn.pack(side=tk.LEFT)
+
+    files_count_label = tk.Label(
+        files_frame, 
+        text="Files added: 0", 
+        font=("Helvetica", 10, "bold"), 
         bg=bg_color, 
         fg="#64748b"
     )
-    info_label.pack(pady=(0, 15))
+    files_count_label.pack(side=tk.RIGHT, padx=10)
 
-    # Target size input frame
+    # Listbox to show selected files
+    listbox_frame = tk.Frame(root, bg=bg_color)
+    listbox_frame.pack(fill=tk.BOTH, padx=25, pady=5)
+    
+    scrollbar = tk.Scrollbar(listbox_frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    files_listbox = tk.Listbox(
+        listbox_frame, 
+        height=5, 
+        font=("Helvetica", 9), 
+        bd=1, 
+        relief="solid",
+        yscrollcommand=scrollbar.set
+    )
+    files_listbox.pack(fill=tk.BOTH, expand=True)
+    scrollbar.config(command=files_listbox.yview)
+
+    # Output Folder Selection Frame
+    output_frame = tk.Frame(root, bg=bg_color)
+    output_frame.pack(fill=tk.X, padx=25, pady=10)
+
+    output_label = tk.Label(
+        output_frame,
+        text="Output Folder:",
+        font=("Helvetica", 9, "bold"),
+        bg=bg_color,
+        fg=text_color
+    )
+    output_label.pack(anchor="w")
+
+    output_inner = tk.Frame(output_frame, bg=bg_color)
+    output_inner.pack(fill=tk.X, pady=(2, 0))
+
+    default_output = os.path.join(os.path.expanduser("~"), "Desktop", "Compressed_Files")
+    output_entry = tk.Entry(
+        output_inner, 
+        font=("Helvetica", 9), 
+        bd=1, 
+        relief="solid"
+    )
+    output_entry.insert(0, default_output)
+    output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+
+    browse_btn = tk.Button(
+        output_inner,
+        text="Browse...",
+        font=("Helvetica", 9),
+        bg="#e2e8f0",
+        fg=text_color,
+        activebackground="#cbd5e1",
+        relief="flat",
+        cursor="hand2",
+        command=lambda: browse_output_folder(output_entry)
+    )
+    browse_btn.pack(side=tk.RIGHT)
+
+    # Target Size input frame
     input_frame = tk.Frame(root, bg=bg_color)
-    input_frame.pack(pady=10)
+    input_frame.pack(fill=tk.X, padx=25, pady=5)
 
     size_label = tk.Label(
         input_frame, 
@@ -143,27 +247,29 @@ def main():
         input_frame, 
         width=10, 
         font=("Helvetica", 10), 
-        justify="center"
+        justify="center",
+        bd=1,
+        relief="solid"
     )
     target_entry.insert(0, "600")
     target_entry.pack(side=tk.LEFT)
 
-    # Prominent compress button
+    # Prominent Start Compress Button
     compress_button = tk.Button(
         root,
-        text="Select Files & Compress",
-        font=("Helvetica", 11, "bold"),
-        bg=accent_color,
+        text="Start Compress",
+        font=("Helvetica", 12, "bold"),
+        bg=success_color,
         fg=button_fg,
-        activebackground="#1d4ed8",
+        activebackground="#059669",
         activeforeground=button_fg,
-        padx=15,
+        padx=20,
         pady=8,
         relief="flat",
         cursor="hand2",
-        command=lambda: on_select_and_compress(target_entry)
+        command=lambda: start_compression(target_entry, output_entry, files_listbox, files_count_label)
     )
-    compress_button.pack(pady=(15, 20))
+    compress_button.pack(pady=(15, 10))
 
     root.mainloop()
 
